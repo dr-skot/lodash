@@ -3,7 +3,7 @@ A utility library delivering consistency, [customization](http://lodash.com/cust
 
 ## Download
 
-Check out our [wiki]([https://github.com/lodash/lodash/wiki/build-differences]) for details over the differences between builds.
+Check out our [wiki](https://github.com/lodash/lodash/wiki/build-differences) for details over the differences between builds.
 
 * [Modern build](https://raw.github.com/lodash/lodash/2.4.1/dist/lodash.js) ([minified](https://raw.github.com/lodash/lodash/2.4.1/dist/lodash.min.js)) perfect for new environments
 * [Compatibility build](https://raw.github.com/lodash/lodash/2.4.1/dist/lodash.compat.js) ([minified](https://raw.github.com/lodash/lodash/2.4.1/dist/lodash.compat.min.js)) for old environments too
@@ -11,7 +11,7 @@ Check out our [wiki]([https://github.com/lodash/lodash/wiki/build-differences]) 
 
 CDN copies are available on [cdnjs](http://cdnjs.com/libraries/lodash.js/) & [jsDelivr](http://www.jsdelivr.com/#!lodash). For smaller file sizes, create [custom builds](http://lodash.com/custom-builds) with only the features needed.
 
-Love modules? We’ve got you covered with [lodash-amd](https://npmjs.org/package/lodash-amd), [lodash-es6](https://github.com/lodash/lodash-es6), [lodash-node](https://npmjs.org/package/lodash-node), & [npm packages](https://npmjs.org/browse/keyword/lodash-modularized) per method.
+Love modules? We’ve got you covered with [lodash-amd](https://github.com/lodash/lodash-amd/tree/2.4.1), [lodash-es6](https://github.com/lodash/lodash-es6), [lodash-node](https://npmjs.org/package/lodash-node), & [npm packages](https://npmjs.org/browse/keyword/lodash-modularized) per method.
 
 ## Dive in
 
@@ -25,6 +25,8 @@ A list of upcoming features is available on our [roadmap](https://github.com/lod
 
  * 100% [code coverage](https://coveralls.io/r/lodash)
  * AMD loader support ([curl](https://github.com/cujojs/curl), [dojo](http://dojotoolkit.org/), [requirejs](http://requirejs.org/), etc.)
+ * Collections of modules for [AMD](https://github.com/lodash/lodash-amd/tree/2.4.1), [Node.js](https://npmjs.org/package/lodash-node), & [npm packages](https://npmjs.org/browse/keyword/lodash-modularized)
+ * Follows [semantic versioning](http://semver.org/) for releases
  * [_(…)](http://lodash.com/docs#_) supports intuitive chaining
  * [_.at](http://lodash.com/docs#at) for cherry-picking collection values
  * [_.bindKey](http://lodash.com/docs#bindKey) for binding [*“lazy”*](http://michaux.ca/articles/lazy-function-definition-pattern) defined methods

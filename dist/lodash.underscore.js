@@ -210,6 +210,7 @@
   /** Native method shortcuts */
   var ceil = Math.ceil,
       floor = Math.floor,
+      fnToString = Function.prototype.toString,
       hasOwnProperty = objectProto.hasOwnProperty,
       push = arrayRef.push,
       propertyIsEnumerable = objectProto.propertyIsEnumerable;
@@ -853,7 +854,7 @@
 
   /**
    * Gets the appropriate "indexOf" function. If the `_.indexOf` method is
-   * customized, this method returns the custom method, otherwise it returns
+   * customized this method returns the custom method, otherwise it returns
    * the `baseIndexOf` function.
    *
    * @private
@@ -872,7 +873,7 @@
    * @returns {boolean} Returns `true` if the `value` is a native function, else `false`.
    */
   function isNative(value) {
-    return typeof value == 'function' && reNative.test(value);
+    return typeof value == 'function' && reNative.test(fnToString.call(value));
   }
 
   /**
@@ -948,14 +949,14 @@
    * @returns {Array} Returns an array of property names.
    */
   var shimKeys = function(object) {
-    var index, iterable = object, result = [];
-    if (!iterable) return result;
+    var result = [];
+    if (!(object && objectTypes[typeof object])) return result;
     if (!(objectTypes[typeof object])) return result;
-      for (index in iterable) {
-        if (hasOwnProperty.call(iterable, index)) {
-          result.push(index);
+    for (var key in object) {
+        if (hasOwnProperty.call(object, key)) {
+        result.push(key);
         }
-      }
+    }
     return result
   };
 
@@ -1013,7 +1014,6 @@
    *
    * @static
    * @memberOf _
-   * @type Function
    * @alias extend
    * @category Objects
    * @param {Object} object The destination object.
@@ -1039,10 +1039,10 @@
       return object;
     }
     for (var argsIndex = 1, argsLength = arguments.length; argsIndex < argsLength; argsIndex++) {
-      var iterable = arguments[argsIndex];
-      if (iterable) {
-        for (var key in iterable) {
-          object[key] = iterable[key];
+      var source = arguments[argsIndex];
+      if (source) {
+        for (var key in source) {
+          object[key] = source[key];
         }
       }
     }
@@ -1102,7 +1102,6 @@
    *
    * @static
    * @memberOf _
-   * @type Function
    * @category Objects
    * @param {Object} object The destination object.
    * @param {...Object} [source] The source objects.
@@ -1120,11 +1119,11 @@
       return object;
     }
     for (var argsIndex = 1, argsLength = arguments.length; argsIndex < argsLength; argsIndex++) {
-      var iterable = arguments[argsIndex];
-      if (iterable) {
-        for (var key in iterable) {
+      var source = arguments[argsIndex];
+      if (source) {
+        for (var key in source) {
           if (typeof object[key] == 'undefined') {
-            object[key] = iterable[key];
+            object[key] = source[key];
           }
         }
       }
@@ -1163,13 +1162,12 @@
    * });
    * // => logs 'x', 'y', and 'move' (property order is not guaranteed across environments)
    */
-  var forIn = function(collection, callback) {
-    var index, iterable = collection, result = iterable;
-    if (!iterable) return result;
-    if (!objectTypes[typeof iterable]) return result;
-      for (index in iterable) {
-        if (callback(iterable[index], index, collection) === indicatorObject) return result;
-      }
+  var forIn = function(object, callback) {
+    var result = object;
+    if (!(object && objectTypes[typeof object])) return result;
+    for (var key in object) {
+      if (callback(object[key], key, object) === indicatorObject) return result;
+    }
     return result
   };
 
@@ -1181,7 +1179,6 @@
    *
    * @static
    * @memberOf _
-   * @type Function
    * @category Objects
    * @param {Object} object The object to iterate over.
    * @param {Function} [callback=identity] The function called per iteration.
@@ -1194,17 +1191,19 @@
    * });
    * // => logs '0', '1', and 'length' (property order is not guaranteed across environments)
    */
-  var forOwn = function(collection, callback) {
-    var index, iterable = collection, result = iterable;
-    if (!iterable) return result;
-    if (!objectTypes[typeof iterable]) return result;
-      for (index in iterable) {
-        if (hasOwnProperty.call(iterable, index)) {
-          if (callback(iterable[index], index, collection) === indicatorObject) return result;
-        }
+  function forOwn(object, callback) {
+    var index = -1,
+        props = keys(object),
+        length = props.length;
+
+    while (++index < length) {
+      var key = props[index];
+      if (callback(object[key], key, object) === indicatorObject) {
+        break;
       }
-    return result
-  };
+    }
+    return object;
+  }
 
   /**
    * Creates a sorted array of property names of all enumerable properties,
@@ -1251,27 +1250,49 @@
   }
 
   /**
-   * Creates an object composed of the inverted keys and values of the given object.
+   * Creates an object composed of the inverted keys and values of the given
+   * object. If the given object contains duplicate values, subsequent values
+   * will overwrite property assignments of previous values unless `multiValue`
+   * is `true`.
    *
    * @static
    * @memberOf _
    * @category Objects
    * @param {Object} object The object to invert.
+   * @param {boolean} [multiValue=false] Allow multiple values per key.
    * @returns {Object} Returns the created inverted object.
    * @example
    *
    * _.invert({ 'first': 'fred', 'second': 'barney' });
    * // => { 'fred': 'first', 'barney': 'second' }
+   *
+   * // without `multiValue`
+   * _.invert({ 'first': 'fred', 'second': 'barney', 'third': 'fred' });
+   * // => { 'fred': 'third', 'barney': 'second' }
+   *
+   * // with `multiValue`
+   * _.invert({ 'first': 'fred', 'second': 'barney', 'third': 'fred' }, true);
+   * // => { 'fred': ['first', 'third'], 'barney': 'second' }
    */
-  function invert(object) {
+  function invert(object, multiValue) {
     var index = -1,
         props = keys(object),
         length = props.length,
         result = {};
 
     while (++index < length) {
-      var key = props[index];
-      result[object[key]] = key;
+      var key = props[index],
+          value = object[key];
+
+      if (multiValue && hasOwnProperty.call(result, value)) {
+        if (typeof result[value] == 'string') {
+          result[value] = [result[value]];
+        }
+        result[value].push(key);
+      }
+      else {
+        result[value] = key;
+      }
     }
     return result;
   }
@@ -1410,7 +1431,8 @@
    * Checks if `value` is, or can be coerced to, a finite number.
    *
    * Note: This is not the same as native `isFinite` which will return true for
-   * booleans and empty strings. See http://es5.github.io/#x15.1.2.5.
+   * booleans and empty strings. See the [ES5 spec](http://es5.github.io/#x15.1.2.5)
+   * for more details.
    *
    * @static
    * @memberOf _
@@ -1493,7 +1515,8 @@
    * Checks if `value` is `NaN`.
    *
    * Note: This is not the same as native `isNaN` which will return `true` for
-   * `undefined` and other non-numeric values. See http://es5.github.io/#x15.1.2.4.
+   * `undefined` and other non-numeric values. See the [ES5 spec](http://es5.github.io/#x15.1.2.4)
+   * for more details.
    *
    * @static
    * @memberOf _
@@ -1543,7 +1566,8 @@
   /**
    * Checks if `value` is a number.
    *
-   * Note: `NaN` is considered a number. See http://es5.github.io/#x8.5.
+   * Note: `NaN` is considered a number. See the [ES5 spec](http://es5.github.io/#x8.5)
+   * for more details.
    *
    * @static
    * @memberOf _
@@ -2558,7 +2582,7 @@
   }
 
   /**
-   * The opposite of `_.filter` this method returns the elements of a
+   * The opposite of `_.filter`; this method returns the elements of a
    * collection that the callback does **not** return truey for.
    *
    * If a property name is provided for `callback` the created "_.pluck" style
@@ -2635,7 +2659,7 @@
 
   /**
    * Creates an array of shuffled values, using a version of the Fisher-Yates
-   * shuffle. See http://en.wikipedia.org/wiki/Fisher-Yates_shuffle.
+   * shuffle. See [Wikipedia](http://en.wikipedia.org/wiki/Fisher-Yates_shuffle) for more details.
    *
    * @static
    * @memberOf _
@@ -2892,12 +2916,13 @@
   function compact(array) {
     var index = -1,
         length = array ? array.length : 0,
+        resIndex = 0,
         result = [];
 
     while (++index < length) {
       var value = array[index];
       if (value) {
-        result.push(value);
+        result[resIndex++] = value;
       }
     }
     return result;
@@ -2951,9 +2976,11 @@
    * _.first([1, 2, 3]);
    * // => 1
    *
+   * // returns the first two elements
    * _.first([1, 2, 3], 2);
    * // => [1, 2]
    *
+   * // returns elements from the beginning until the callback result is falsey
    * _.first([1, 2, 3], function(num) {
    *   return num < 3;
    * });
@@ -3021,6 +3048,7 @@
    * _.flatten([1, [2], [3, [[4]]]]);
    * // => [1, 2, 3, 4];
    *
+   * // using `isShallow`
    * _.flatten([1, [2], [3, [[4]]]], true);
    * // => [1, 2, 3, [[4]]];
    *
@@ -3055,9 +3083,11 @@
    * _.indexOf([1, 2, 3, 1, 2, 3], 2);
    * // => 1
    *
+   * // using `fromIndex`
    * _.indexOf([1, 2, 3, 1, 2, 3], 2, 3);
    * // => 4
    *
+   * // performing a binary search
    * _.indexOf([1, 1, 2, 2, 3, 3], 2, true);
    * // => 2
    */
@@ -3100,9 +3130,11 @@
    * _.initial([1, 2, 3]);
    * // => [1, 2]
    *
+   * // excludes the last two elements
    * _.initial([1, 2, 3], 2);
    * // => [1]
    *
+   * // excludes elements from the end until the callback fails
    * _.initial([1, 2, 3], function(num) {
    *   return num > 1;
    * });
@@ -3213,9 +3245,11 @@
    * _.last([1, 2, 3]);
    * // => 3
    *
+   * // returns the last two elements
    * _.last([1, 2, 3], 2);
    * // => [2, 3]
    *
+   * // returns elements from the end until the callback fails
    * _.last([1, 2, 3], function(num) {
    *   return num > 1;
    * });
@@ -3278,6 +3312,7 @@
    * _.lastIndexOf([1, 2, 3, 1, 2, 3], 2);
    * // => 4
    *
+   * // using `fromIndex`
    * _.lastIndexOf([1, 2, 3, 1, 2, 3], 2, 3);
    * // => 1
    */
@@ -3348,7 +3383,7 @@
   }
 
   /**
-   * The opposite of `_.initial` this method gets all but the first element or
+   * The opposite of `_.initial`; this method gets all but the first element or
    * first `n` elements of an array. If a callback function is provided elements
    * at the beginning of the array are excluded from the result as long as the
    * callback returns truey. The callback is bound to `thisArg` and invoked
@@ -3377,9 +3412,11 @@
    * _.rest([1, 2, 3]);
    * // => [2, 3]
    *
+   * // excludes the first two elements
    * _.rest([1, 2, 3], 2);
    * // => [3]
    *
+   * // excludes elements from the beginning until the callback fails
    * _.rest([1, 2, 3], function(num) {
    *   return num < 3;
    * });
@@ -3445,22 +3482,24 @@
    * _.sortedIndex([20, 30, 50], 40);
    * // => 2
    *
-   * // using "_.pluck" callback shorthand
-   * _.sortedIndex([{ 'x': 20 }, { 'x': 30 }, { 'x': 50 }], { 'x': 40 }, 'x');
-   * // => 2
-   *
    * var dict = {
    *   'wordToNumber': { 'twenty': 20, 'thirty': 30, 'fourty': 40, 'fifty': 50 }
    * };
    *
+   * // using `callback`
    * _.sortedIndex(['twenty', 'thirty', 'fifty'], 'fourty', function(word) {
    *   return dict.wordToNumber[word];
    * });
    * // => 2
    *
+   * // using `callback` with `thisArg`
    * _.sortedIndex(['twenty', 'thirty', 'fifty'], 'fourty', function(word) {
    *   return this.wordToNumber[word];
    * }, dict);
+   * // => 2
+   *
+   * // using "_.pluck" callback shorthand
+   * _.sortedIndex([{ 'x': 20 }, { 'x': 30 }, { 'x': 50 }], { 'x': 40 }, 'x');
    * // => 2
    */
   function sortedIndex(array, value, callback, thisArg) {
@@ -3529,12 +3568,15 @@
    * _.uniq([1, 2, 1, 3, 1]);
    * // => [1, 2, 3]
    *
+   * // using `isSorted`
    * _.uniq([1, 1, 2, 2, 3], true);
    * // => [1, 2, 3]
    *
+   * // using `callback`
    * _.uniq(['A', 'b', 'C', 'a', 'B', 'c'], function(letter) { return letter.toLowerCase(); });
    * // => ['A', 'b', 'C']
    *
+   * // using `callback` with `thisArg`
    * _.uniq([1, 2.5, 3, 1.5, 2, 3.5], function(num) { return this.floor(num); }, Math);
    * // => [1, 2.5, 3]
    *
@@ -3575,9 +3617,10 @@
   }
 
   /**
-   * Creates an array of grouped elements, the first of which contains the first
-   * elements of the given arrays, the second of which contains the second
-   * elements of the given arrays, and so on.
+   * Creates an array of grouped elements, the first of which contains the
+   * first elements of the given arrays, the second of which contains the second
+   * elements of the given arrays, and so on. If a zipped value is provided its
+   * corresponding unzipped value will be returned.
    *
    * @static
    * @memberOf _
@@ -3589,6 +3632,9 @@
    *
    * _.zip(['fred', 'barney'], [30, 40], [true, false]);
    * // => [['fred', 30, true], ['barney', 40, false]]
+   *
+   * _.unzip([['fred', 30, true], ['barney', 40, false]]);
+   * // => [['fred', 'barney'], [30, 40], [true, false]]
    */
   function zip() {
     var index = -1,
@@ -4219,6 +4265,9 @@
    * Converts the characters `&`, `<`, `>`, `"`, and `'` in `string` to their
    * corresponding HTML entities.
    *
+   * Note: No other characters are escaped. To escape additional characters
+   * use a third-party library like [_he_](http://mths.be/he).
+   *
    * @static
    * @memberOf _
    * @category Utilities
@@ -4455,13 +4504,13 @@
    * whitespace, and correctly escapes quotes within interpolated code.
    *
    * Note: In the development build, `_.template` utilizes sourceURLs for easier
-   * debugging. See http://www.html5rocks.com/en/tutorials/developertools/sourcemaps/#toc-sourceurl
+   * debugging. See [HTML5 Rocks' article on sourcemaps](http://www.html5rocks.com/en/tutorials/developertools/sourcemaps/#toc-sourceurl).
    *
-   * For more information on precompiling templates see:
-   * http://lodash.com/custom-builds
+   * For more information on precompiling templates see
+   * [Lo-Dash's custom builds documentation](http://lodash.com/custom-builds).
    *
-   * For more information on Chrome extension sandboxes see:
-   * http://developer.chrome.com/stable/extensions/sandboxingEval.html
+   * For more information on Chrome extension sandboxes see
+   * [Chrome's extensions documentation](http://developer.chrome.com/stable/extensions/sandboxingEval.html).
    *
    * @static
    * @memberOf _
@@ -4628,9 +4677,12 @@
   }
 
   /**
-   * The inverse of `_.escape` this method converts the HTML entities
+   * The inverse of `_.escape`; this method converts the HTML entities
    * `&amp;`, `&lt;`, `&gt;`, `&quot;`, and `&#39;` in `string` to their
    * corresponding characters.
+   *
+   * Note: No other HTML entities are unescaped. To unescape additional HTML
+   * entities use a third-party library like [_he_](http://mths.be/he).
    *
    * @static
    * @memberOf _
@@ -4643,7 +4695,11 @@
    * // => 'Fred, Barney & Pebbles'
    */
   function unescape(string) {
-    return string == null ? '' : String(string).replace(reEscapedHtml, unescapeHtmlChar);
+    if (string == null) {
+      return '';
+    }
+    string = String(string);
+    return string.indexOf(';') < 0 ? string : string.replace(reEscapedHtml, unescapeHtmlChar);
   }
 
   /**
@@ -4900,7 +4956,7 @@
   /*--------------------------------------------------------------------------*/
 
   // add functions to `lodash.prototype`
-  mixin(lodash);
+  mixin(assign({}, lodash));
 
   /**
    * The semantic version number.

@@ -75,8 +75,8 @@
   /** Used to assign default `context` object properties */
   var contextProps = [
     'Array', 'Boolean', 'Date', 'Function', 'Math', 'Number', 'Object',
-    'RegExp', 'String', '_', 'attachEvent', 'clearTimeout', 'isFinite', 'isNaN',
-    'parseInt', 'setTimeout'
+    'RegExp', 'String', '_', 'clearTimeout', 'document', 'isFinite', 'isNaN',
+    'parseInt', 'setTimeout', 'TypeError', 'window', 'WinRTError'
   ];
 
   /** Used to make template sourceURLs easier to identify */
@@ -459,6 +459,9 @@
     /** Used for native method references */
     var objectProto = Object.prototype;
 
+    /** Used to detect DOM support */
+    var document = (document = context.window) && document.document;
+
     /** Used to restore the original `_` reference in `noConflict` */
     var oldDash = context._;
 
@@ -614,6 +617,14 @@
      * @type Object
      */
     var support = lodash.support = {};
+
+    /**
+     * Detect if the DOM is supported.
+     *
+     * @memberOf _.support
+     * @type boolean
+     */
+    support.dom = !!document && typeof document == 'object' && reNative.test(clearTimeout) && reNative.test(setTimeout);
 
     /**
      * Detect if functions can be decompiled by `Function#toString`
@@ -1462,7 +1473,7 @@
 
     /**
      * Gets the appropriate "indexOf" function. If the `_.indexOf` method is
-     * customized, this method returns the custom method, otherwise it returns
+     * customized this method returns the custom method, otherwise it returns
      * the `baseIndexOf` function.
      *
      * @private
@@ -1481,7 +1492,7 @@
      * @returns {boolean} Returns `true` if the `value` is a native function, else `false`.
      */
     function isNative(value) {
-      return typeof value == 'function' && reNative.test(value);
+      return typeof value == 'function' && reNative.test(fnToString.call(value));
     }
 
     /**
@@ -1590,14 +1601,14 @@
      * @returns {Array} Returns an array of property names.
      */
     var shimKeys = function(object) {
-      var index, iterable = object, result = [];
-      if (!iterable) return result;
+      var result = [];
+      if (!(object && objectTypes[typeof object])) return result;
       if (!(objectTypes[typeof object])) return result;
-        for (index in iterable) {
-          if (hasOwnProperty.call(iterable, index)) {
-            result.push(index);
+      for (var key in object) {
+          if (hasOwnProperty.call(object, key)) {
+          result.push(key);
           }
-        }
+      }
       return result
     };
 
@@ -1655,7 +1666,6 @@
      *
      * @static
      * @memberOf _
-     * @type Function
      * @alias extend
      * @category Objects
      * @param {Object} object The destination object.
@@ -1676,32 +1686,31 @@
      * defaults(object, { 'name': 'fred', 'employer': 'slate' });
      * // => { 'name': 'barney', 'employer': 'slate' }
      */
-    var assign = function(object, source, guard) {
-      var index, iterable = object, result = iterable;
-      if (!iterable) return result;
+    function assign(object, source, guard) {
       var args = arguments,
           argsIndex = 0,
           argsLength = typeof guard == 'number' ? 2 : args.length;
+
       if (argsLength > 3 && typeof args[argsLength - 2] == 'function') {
         var callback = baseCreateCallback(args[--argsLength - 1], args[argsLength--], 2);
       } else if (argsLength > 2 && typeof args[argsLength - 1] == 'function') {
         callback = args[--argsLength];
       }
       while (++argsIndex < argsLength) {
-        iterable = args[argsIndex];
-        if (iterable && objectTypes[typeof iterable]) {
-        var ownIndex = -1,
-            ownProps = objectTypes[typeof iterable] && keys(iterable),
-            length = ownProps ? ownProps.length : 0;
+        source = args[argsIndex];
+        if (isObject(source)) {
+          var index = -1,
+              props = keys(source),
+              length = props.length;
 
-        while (++ownIndex < length) {
-          index = ownProps[ownIndex];
-          result[index] = callback ? callback(result[index], iterable[index]) : iterable[index];
-        }
+          while (++index < length) {
+            var key = props[index];
+            object[key] = callback ? callback(object[key], source[key]) : source[key];
+          }
         }
       }
-      return result
-    };
+      return object;
+    }
 
     /**
      * Creates a clone of `value`. If `isDeep` is `true` nested objects will also
@@ -1763,7 +1772,8 @@
      * Note: This method is loosely based on the structured clone algorithm. Functions
      * and DOM nodes are **not** cloned. The enumerable properties of `arguments` objects and
      * objects created by constructors other than `Object` are cloned to plain `Object` objects.
-     * See http://www.w3.org/TR/html5/infrastructure.html#internal-structured-cloning-algorithm.
+     * See the [HTML5 specification](http://www.w3.org/TR/html5/infrastructure.html#internal-structured-cloning-algorithm)
+     * for more details.
      *
      * @static
      * @memberOf _
@@ -1842,7 +1852,6 @@
      *
      * @static
      * @memberOf _
-     * @type Function
      * @category Objects
      * @param {Object} object The destination object.
      * @param {...Object} [source] The source objects.
@@ -1855,27 +1864,28 @@
      * _.defaults(object, { 'name': 'fred', 'employer': 'slate' });
      * // => { 'name': 'barney', 'employer': 'slate' }
      */
-    var defaults = function(object, source, guard) {
-      var index, iterable = object, result = iterable;
-      if (!iterable) return result;
+    function defaults(object, source, guard) {
       var args = arguments,
           argsIndex = 0,
           argsLength = typeof guard == 'number' ? 2 : args.length;
-      while (++argsIndex < argsLength) {
-        iterable = args[argsIndex];
-        if (iterable && objectTypes[typeof iterable]) {
-        var ownIndex = -1,
-            ownProps = objectTypes[typeof iterable] && keys(iterable),
-            length = ownProps ? ownProps.length : 0;
 
-        while (++ownIndex < length) {
-          index = ownProps[ownIndex];
-          if (typeof result[index] == 'undefined') result[index] = iterable[index];
-        }
+      while (++argsIndex < argsLength) {
+        source = args[argsIndex];
+        if (isObject(source)) {
+          var index = -1,
+              props = keys(source),
+              length = props.length;
+
+          while (++index < length) {
+            var key = props[index];
+            if (typeof object[key] == 'undefined') {
+              object[key] = source[key];
+            }
+          }
         }
       }
-      return result
-    };
+      return object;
+    }
 
     /**
      * This method is like `_.findIndex` except that it returns the key of the
@@ -2014,14 +2024,13 @@
      * });
      * // => logs 'x', 'y', and 'move' (property order is not guaranteed across environments)
      */
-    var forIn = function(collection, callback, thisArg) {
-      var index, iterable = collection, result = iterable;
-      if (!iterable) return result;
-      if (!objectTypes[typeof iterable]) return result;
+    var forIn = function(object, callback, thisArg) {
+      var result = object;
+      if (!(object && objectTypes[typeof object])) return result;
       callback = callback && typeof thisArg == 'undefined' ? callback : baseCreateCallback(callback, thisArg, 3);
-        for (index in iterable) {
-          if (callback(iterable[index], index, collection) === false) return result;
-        }
+      for (var key in object) {
+        if (callback(object[key], key, object) === false) return result;
+      }
       return result
     };
 
@@ -2078,7 +2087,6 @@
      *
      * @static
      * @memberOf _
-     * @type Function
      * @category Objects
      * @param {Object} object The object to iterate over.
      * @param {Function} [callback=identity] The function called per iteration.
@@ -2091,21 +2099,20 @@
      * });
      * // => logs '0', '1', and 'length' (property order is not guaranteed across environments)
      */
-    var forOwn = function(collection, callback, thisArg) {
-      var index, iterable = collection, result = iterable;
-      if (!iterable) return result;
-      if (!objectTypes[typeof iterable]) return result;
-      callback = callback && typeof thisArg == 'undefined' ? callback : baseCreateCallback(callback, thisArg, 3);
-        var ownIndex = -1,
-            ownProps = objectTypes[typeof iterable] && keys(iterable),
-            length = ownProps ? ownProps.length : 0;
+    function forOwn(object, callback, thisArg) {
+      var index = -1,
+          props = keys(object),
+          length = props.length;
 
-        while (++ownIndex < length) {
-          index = ownProps[ownIndex];
-          if (callback(iterable[index], index, collection) === false) return result;
+      callback = callback && typeof thisArg == 'undefined' ? callback : baseCreateCallback(callback, thisArg, 3);
+      while (++index < length) {
+        var key = props[index];
+        if (callback(object[key], key, object) === false) {
+          break;
         }
-      return result
-    };
+      }
+      return object;
+    }
 
     /**
      * This method is like `_.forOwn` except that it iterates over elements
@@ -2184,27 +2191,49 @@
     }
 
     /**
-     * Creates an object composed of the inverted keys and values of the given object.
+     * Creates an object composed of the inverted keys and values of the given
+     * object. If the given object contains duplicate values, subsequent values
+     * will overwrite property assignments of previous values unless `multiValue`
+     * is `true`.
      *
      * @static
      * @memberOf _
      * @category Objects
      * @param {Object} object The object to invert.
+     * @param {boolean} [multiValue=false] Allow multiple values per key.
      * @returns {Object} Returns the created inverted object.
      * @example
      *
      * _.invert({ 'first': 'fred', 'second': 'barney' });
      * // => { 'fred': 'first', 'barney': 'second' }
+     *
+     * // without `multiValue`
+     * _.invert({ 'first': 'fred', 'second': 'barney', 'third': 'fred' });
+     * // => { 'fred': 'third', 'barney': 'second' }
+     *
+     * // with `multiValue`
+     * _.invert({ 'first': 'fred', 'second': 'barney', 'third': 'fred' }, true);
+     * // => { 'fred': ['first', 'third'], 'barney': 'second' }
      */
-    function invert(object) {
+    function invert(object, multiValue) {
       var index = -1,
           props = keys(object),
           length = props.length,
           result = {};
 
       while (++index < length) {
-        var key = props[index];
-        result[object[key]] = key;
+        var key = props[index],
+            value = object[key];
+
+        if (multiValue && hasOwnProperty.call(result, value)) {
+          if (typeof result[value] == 'string') {
+            result[value] = [result[value]];
+          }
+          result[value].push(key);
+        }
+        else {
+          result[value] = key;
+        }
       }
       return result;
     }
@@ -2258,7 +2287,15 @@
      * // => true
      */
     function isElement(value) {
-      return value && value.nodeType === 1 || false;
+      return value && typeof value == 'object' && value.nodeType === 1 &&
+        toString.call(value).indexOf('Element') > -1 || false;
+    }
+    // fallback for environments without DOM support
+    if (!support.dom) {
+      isElement = function(value) {
+        return value && typeof value == 'object' && value.nodeType === 1 &&
+          !isPlainObject(value) || false;
+      };
     }
 
     /**
@@ -2346,7 +2383,8 @@
      * Checks if `value` is, or can be coerced to, a finite number.
      *
      * Note: This is not the same as native `isFinite` which will return true for
-     * booleans and empty strings. See http://es5.github.io/#x15.1.2.5.
+     * booleans and empty strings. See the [ES5 spec](http://es5.github.io/#x15.1.2.5)
+     * for more details.
      *
      * @static
      * @memberOf _
@@ -2423,7 +2461,8 @@
      * Checks if `value` is `NaN`.
      *
      * Note: This is not the same as native `isNaN` which will return `true` for
-     * `undefined` and other non-numeric values. See http://es5.github.io/#x15.1.2.4.
+     * `undefined` and other non-numeric values. See the [ES5 spec](http://es5.github.io/#x15.1.2.4)
+     * for more details.
      *
      * @static
      * @memberOf _
@@ -2473,7 +2512,8 @@
     /**
      * Checks if `value` is a number.
      *
-     * Note: `NaN` is considered a number. See http://es5.github.io/#x8.5.
+     * Note: `NaN` is considered a number. See the [ES5 spec](http://es5.github.io/#x8.5)
+     * for more details.
      *
      * @static
      * @memberOf _
@@ -3774,7 +3814,7 @@
     }
 
     /**
-     * The opposite of `_.filter` this method returns the elements of a
+     * The opposite of `_.filter`; this method returns the elements of a
      * collection that the callback does **not** return truey for.
      *
      * If a property name is provided for `callback` the created "_.pluck" style
@@ -3851,7 +3891,7 @@
 
     /**
      * Creates an array of shuffled values, using a version of the Fisher-Yates
-     * shuffle. See http://en.wikipedia.org/wiki/Fisher-Yates_shuffle.
+     * shuffle. See [Wikipedia](http://en.wikipedia.org/wiki/Fisher-Yates_shuffle) for more details.
      *
      * @static
      * @memberOf _
@@ -4112,12 +4152,13 @@
     function compact(array) {
       var index = -1,
           length = array ? array.length : 0,
+          resIndex = 0,
           result = [];
 
       while (++index < length) {
         var value = array[index];
         if (value) {
-          result.push(value);
+          result[resIndex++] = value;
         }
       }
       return result;
@@ -4277,9 +4318,11 @@
      * _.first([1, 2, 3]);
      * // => 1
      *
+     * // returns the first two elements
      * _.first([1, 2, 3], 2);
      * // => [1, 2]
      *
+     * // returns elements from the beginning until the callback result is falsey
      * _.first([1, 2, 3], function(num) {
      *   return num < 3;
      * });
@@ -4347,6 +4390,7 @@
      * _.flatten([1, [2], [3, [[4]]]]);
      * // => [1, 2, 3, 4];
      *
+     * // using `isShallow`
      * _.flatten([1, [2], [3, [[4]]]], true);
      * // => [1, 2, 3, [[4]]];
      *
@@ -4390,9 +4434,11 @@
      * _.indexOf([1, 2, 3, 1, 2, 3], 2);
      * // => 1
      *
+     * // using `fromIndex`
      * _.indexOf([1, 2, 3, 1, 2, 3], 2, 3);
      * // => 4
      *
+     * // performing a binary search
      * _.indexOf([1, 1, 2, 2, 3, 3], 2, true);
      * // => 2
      */
@@ -4435,9 +4481,11 @@
      * _.initial([1, 2, 3]);
      * // => [1, 2]
      *
+     * // excludes the last two elements
      * _.initial([1, 2, 3], 2);
      * // => [1]
      *
+     * // excludes elements from the end until the callback fails
      * _.initial([1, 2, 3], function(num) {
      *   return num > 1;
      * });
@@ -4565,9 +4613,11 @@
      * _.last([1, 2, 3]);
      * // => 3
      *
+     * // returns the last two elements
      * _.last([1, 2, 3], 2);
      * // => [2, 3]
      *
+     * // returns elements from the end until the callback fails
      * _.last([1, 2, 3], function(num) {
      *   return num > 1;
      * });
@@ -4630,6 +4680,7 @@
      * _.lastIndexOf([1, 2, 3, 1, 2, 3], 2);
      * // => 4
      *
+     * // using `fromIndex`
      * _.lastIndexOf([1, 2, 3, 1, 2, 3], 2, 3);
      * // => 1
      */
@@ -4785,7 +4836,7 @@
     }
 
     /**
-     * The opposite of `_.initial` this method gets all but the first element or
+     * The opposite of `_.initial`; this method gets all but the first element or
      * first `n` elements of an array. If a callback function is provided elements
      * at the beginning of the array are excluded from the result as long as the
      * callback returns truey. The callback is bound to `thisArg` and invoked
@@ -4814,9 +4865,11 @@
      * _.rest([1, 2, 3]);
      * // => [2, 3]
      *
+     * // excludes the first two elements
      * _.rest([1, 2, 3], 2);
      * // => [3]
      *
+     * // excludes elements from the beginning until the callback fails
      * _.rest([1, 2, 3], function(num) {
      *   return num < 3;
      * });
@@ -4882,22 +4935,24 @@
      * _.sortedIndex([20, 30, 50], 40);
      * // => 2
      *
-     * // using "_.pluck" callback shorthand
-     * _.sortedIndex([{ 'x': 20 }, { 'x': 30 }, { 'x': 50 }], { 'x': 40 }, 'x');
-     * // => 2
-     *
      * var dict = {
      *   'wordToNumber': { 'twenty': 20, 'thirty': 30, 'fourty': 40, 'fifty': 50 }
      * };
      *
+     * // using `callback`
      * _.sortedIndex(['twenty', 'thirty', 'fifty'], 'fourty', function(word) {
      *   return dict.wordToNumber[word];
      * });
      * // => 2
      *
+     * // using `callback` with `thisArg`
      * _.sortedIndex(['twenty', 'thirty', 'fifty'], 'fourty', function(word) {
      *   return this.wordToNumber[word];
      * }, dict);
+     * // => 2
+     *
+     * // using "_.pluck" callback shorthand
+     * _.sortedIndex([{ 'x': 20 }, { 'x': 30 }, { 'x': 50 }], { 'x': 40 }, 'x');
      * // => 2
      */
     function sortedIndex(array, value, callback, thisArg) {
@@ -4966,12 +5021,15 @@
      * _.uniq([1, 2, 1, 3, 1]);
      * // => [1, 2, 3]
      *
+     * // using `isSorted`
      * _.uniq([1, 1, 2, 2, 3], true);
      * // => [1, 2, 3]
      *
+     * // using `callback`
      * _.uniq(['A', 'b', 'C', 'a', 'B', 'c'], function(letter) { return letter.toLowerCase(); });
      * // => ['A', 'b', 'C']
      *
+     * // using `callback` with `thisArg`
      * _.uniq([1, 2.5, 3, 1.5, 2, 3.5], function(num) { return this.floor(num); }, Math);
      * // => [1, 2.5, 3]
      *
@@ -5013,7 +5071,7 @@
 
     /**
      * Creates an array that is the symmetric difference of the provided arrays.
-     * See http://en.wikipedia.org/wiki/Symmetric_difference.
+     * See [Wikipedia](http://en.wikipedia.org/wiki/Symmetric_difference) for more details.
      *
      * @static
      * @memberOf _
@@ -5036,17 +5094,18 @@
         var array = arguments[index];
         if (isArray(array) || isArguments(array)) {
           var result = result
-            ? baseUniq(baseDifference(result, array).concat(baseDifference(array, result)))
+            ? baseDifference(result, array).concat(baseDifference(array, result))
             : array;
         }
       }
-      return result || [];
+      return result ? baseUniq(result) : [];
     }
 
     /**
-     * Creates an array of grouped elements, the first of which contains the first
-     * elements of the given arrays, the second of which contains the second
-     * elements of the given arrays, and so on.
+     * Creates an array of grouped elements, the first of which contains the
+     * first elements of the given arrays, the second of which contains the second
+     * elements of the given arrays, and so on. If a zipped value is provided its
+     * corresponding unzipped value will be returned.
      *
      * @static
      * @memberOf _
@@ -5058,6 +5117,9 @@
      *
      * _.zip(['fred', 'barney'], [30, 40], [true, false]);
      * // => [['fred', 30, true], ['barney', 40, false]]
+     *
+     * _.unzip([['fred', 30, true], ['barney', 40, false]]);
+     * // => [['fred', 'barney'], [30, 40], [true, false]]
      */
     function zip() {
       var array = arguments.length > 1 ? arguments : arguments[0],
@@ -5214,7 +5276,8 @@
      * and prepends any additional `bindKey` arguments to those provided to the bound
      * function. This method differs from `_.bind` by allowing bound functions to
      * reference methods that will be redefined or don't yet exist.
-     * See http://michaux.ca/articles/lazy-function-definition-pattern.
+     * See [Peter Michaux's article](http://michaux.ca/articles/lazy-function-definition-pattern)
+     * for more details.
      *
      * @static
      * @memberOf _
@@ -5831,6 +5894,9 @@
      * Converts the characters `&`, `<`, `>`, `"`, and `'` in `string` to their
      * corresponding HTML entities.
      *
+     * Note: No other characters are escaped. To escape additional characters
+     * use a third-party library like [_he_](http://mths.be/he).
+     *
      * @static
      * @memberOf _
      * @category Utilities
@@ -5991,7 +6057,8 @@
      * `value` is a hexadecimal, in which case a `radix` of `16` is used.
      *
      * Note: This method avoids differences in native ES3 and ES5 `parseInt`
-     * implementations. See http://es5.github.io/#E.
+     * implementations. See the [ES5 spec](http://es5.github.io/#E)
+     * for more details.
      *
      * @static
      * @memberOf _
@@ -6136,13 +6203,13 @@
      * whitespace, and correctly escapes quotes within interpolated code.
      *
      * Note: In the development build, `_.template` utilizes sourceURLs for easier
-     * debugging. See http://www.html5rocks.com/en/tutorials/developertools/sourcemaps/#toc-sourceurl
+     * debugging. See [HTML5 Rocks' article on sourcemaps](http://www.html5rocks.com/en/tutorials/developertools/sourcemaps/#toc-sourceurl).
      *
-     * For more information on precompiling templates see:
-     * http://lodash.com/custom-builds
+     * For more information on precompiling templates see
+     * [Lo-Dash's custom builds documentation](http://lodash.com/custom-builds).
      *
-     * For more information on Chrome extension sandboxes see:
-     * http://developer.chrome.com/stable/extensions/sandboxingEval.html
+     * For more information on Chrome extension sandboxes see
+     * [Chrome's extensions documentation](http://developer.chrome.com/stable/extensions/sandboxingEval.html).
      *
      * @static
      * @memberOf _
@@ -6353,9 +6420,12 @@
     }
 
     /**
-     * The inverse of `_.escape` this method converts the HTML entities
+     * The inverse of `_.escape`; this method converts the HTML entities
      * `&amp;`, `&lt;`, `&gt;`, `&quot;`, and `&#39;` in `string` to their
      * corresponding characters.
+     *
+     * Note: No other HTML entities are unescaped. To unescape additional HTML
+     * entities use a third-party library like [_he_](http://mths.be/he).
      *
      * @static
      * @memberOf _
@@ -6368,7 +6438,11 @@
      * // => 'Fred, Barney & Pebbles'
      */
     function unescape(string) {
-      return string == null ? '' : String(string).replace(reEscapedHtml, unescapeHtmlChar);
+      if (string == null) {
+        return '';
+      }
+      string = String(string);
+      return string.indexOf(';') < 0 ? string : string.replace(reEscapedHtml, unescapeHtmlChar);
     }
 
     /**
@@ -6600,7 +6674,7 @@
     lodash.unzip = zip;
 
     // add functions to `lodash.prototype`
-    mixin(lodash);
+    mixin(assign({}, lodash));
 
     /*--------------------------------------------------------------------------*/
 

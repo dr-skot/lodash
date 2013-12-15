@@ -9,7 +9,7 @@
       amd = root.define && define.amd,
       argv = root.process && process.argv,
       document = !phantom && root.document,
-      body = document && document.body,
+      body = root.document && root.document.body,
       create = Object.create,
       freeze = Object.freeze,
       noop = function() {},
@@ -91,7 +91,7 @@
 
   /*--------------------------------------------------------------------------*/
 
-  // log params passed to `test.js`
+  // log params provided to `test.js`
   if (params) {
     console.log('test.js invoked with arguments: ' + JSON.stringify(slice.call(params)));
   }
@@ -106,6 +106,14 @@
     });
 
     page.onCallback = function(details) {
+      var coverage = details.coverage;
+      if (coverage) {
+        var fs = require('fs'),
+            cwd = fs.workingDirectory,
+            sep = fs.separator;
+
+        fs.write([cwd, 'coverage', 'coverage.json'].join(sep), JSON.stringify(coverage));
+      }
       phantom.exit(details.failed ? 1 : 0);
     };
 
@@ -116,7 +124,10 @@
     page.onInitialized = function() {
       page.evaluate(function() {
         document.addEventListener('DOMContentLoaded', function() {
-          QUnit.done(callPhantom);
+          QUnit.done(function(details) {
+            details.coverage = window.__coverage__;
+            callPhantom(details);
+          });
         });
       });
     };
@@ -216,51 +227,59 @@
           '})'
         ].join('\n')));
 
+        // fake dom
+        var window = global.window = {};
+        window.document = {};
+        window.window = window;
+
+        var _clearTimeout = global.clearTimeout;
+        global.clearTimeout = Number;
+
+        var _setTimeout = global.setTimeout;
+        global.setTimeout = Number;
+
         // add extensions
         Function.prototype._method = function() {};
 
         // set bad shims
-        Array._isArray = Array.isArray;
+        var _isArray = Array.isArray;
         Array.isArray = function() {};
 
-        Date._now = Date.now;
+        var _now = Date.now;
         Date.now = function() {};
 
-        Function.prototype._bind = Function.prototype.bind;
+        var _bind = Function.prototype.bind;
         Function.prototype.bind = function() { return function() {}; };
 
-        Object._create = Object.create;
+        var _create = Object.create;
         Object.create = function() {};
 
-        Object._defineProperty = Object.defineProperty;
+        var _defineProperty = Object.defineProperty;
         Object.defineProperty = function() {};
 
-        Object._getPrototypeOf = Object.getPrototypeOf;
+        var _getPrototypeOf = Object.getPrototypeOf;
         Object.getPrototypeOf = function() {};
 
-        Object._keys = Object.keys;
+        var _keys = Object.keys;
         Object.keys = function() {};
 
         // load Lo-Dash and expose it to the bad extensions/shims
         lodashBizarro = (lodashBizarro = require(filePath))._ || lodashBizarro;
 
         // restore native methods
-        Array.isArray = Array._isArray;
-        Date.now = Date._now;
-        Function.prototype.bind = Function.prototype._bind;
-        Object.create = Object._create;
-        Object.defineProperty = Object._defineProperty;
-        Object.getPrototypeOf = Object._getPrototypeOf;
-        Object.keys = Object._keys;
+        Array.isArray = _isArray;
+        Date.now = _now;
+        Function.prototype.bind = _bind;
+        Object.create = _create;
+        Object.defineProperty = _defineProperty;
+        Object.getPrototypeOf = _getPrototypeOf;
+        Object.keys = _keys;
 
-        delete Array._isArray;
-        delete Date._now;
-        delete Function.prototype._bind;
+        global.clearTimeout = _clearTimeout;
+        global.setTimeout = _setTimeout;
+
+        delete global.window;
         delete Function.prototype._method;
-        delete Object._create;
-        delete Object._defineProperty;
-        delete Object._getPrototypeOf;
-        delete Object._keys;
       } catch(e) { }
     }
     if (!_._object && document) {
@@ -1942,12 +1961,16 @@
     var escaped = '&amp;&lt;&gt;&quot;&#39;\/',
         unescaped = '&<>"\'\/';
 
+    test('should escape values', 1, function() {
+      equal(_.escape(unescaped), escaped);
+    });
+
     test('should not escape the "/" character', 1, function() {
       equal(_.escape('/'), '/');
     });
 
-    test('should escape values', 1, function() {
-      equal(_.escape(unescaped), escaped);
+    test('should handle strings with nothing to escape', 1, function() {
+      equal(_.escape('abc'), 'abc');
     });
 
     test('should return an empty string when provided `null` or `undefined`', 2, function() {
@@ -3307,11 +3330,15 @@
       deepEqual(_.invert(object), { 'a': '0', 'b': '1', '2': 'length' });
     });
 
-    test('should accept the one-to-many flag', 1, function() {
-      var object = { '0': 'a', '1': 'b', '2': 'a' };
-      deepEqual(_.invert(object, true), { 'a': ['0', '2'], 'b': ['1'] });
+    test('should accept a `multiValue` flag', 1, function() {
+      var object = { 'a': 1, 'b': 2, 'c': 1 };
+      deepEqual(_.invert(object, true), { '1': ['a', 'c'], '2': 'b' });
     });
 
+    test('should only add multiple values to own, not inherited, properties', 1, function() {
+      var object = { 'a': 'hasOwnProperty', 'b': 'constructor' };
+      deepEqual(_.invert(object, true), { 'hasOwnProperty': 'a', 'constructor': 'b' });
+    });
   }());
 
   /*--------------------------------------------------------------------------*/
@@ -3506,15 +3533,30 @@
   QUnit.module('lodash.isElement');
 
   (function() {
-    test('should use strict equality in its duck type check', 6, function() {
-      var element = body || { 'nodeType': 1 };
+    function Element() {
+      this.nodeType = 1;
+    }
+
+    test('should use robust check', 7, function() {
+      var element = body || new Element;
 
       strictEqual(_.isElement(element), true);
+      strictEqual(_.isElement({ 'nodeType': 1 }), false);
       strictEqual(_.isElement({ 'nodeType': new Number(1) }), false);
       strictEqual(_.isElement({ 'nodeType': true }), false);
       strictEqual(_.isElement({ 'nodeType': [1] }), false);
       strictEqual(_.isElement({ 'nodeType': '1' }), false);
       strictEqual(_.isElement({ 'nodeType': '001' }), false);
+    });
+
+    test('should use a stronger check in browsers', 1, function() {
+      var lodash = document ? _ : lodashBizarro;
+      if (lodash) {
+        strictEqual(lodash.isElement(new Element), false);
+      }
+      else {
+        skipTest();
+      }
     });
 
     test('should work with elements from another realm', 1, function() {
@@ -3824,11 +3866,13 @@
           args2 = (function() { return arguments; }(1, 2, 3)),
           args3 = (function() { return arguments; }(1, 2));
 
+      strictEqual(_.isEqual(args1, args2), true);
+
       if (!isPhantomPage) {
-        strictEqual(_.isEqual(args1, args2), true);
         strictEqual(_.isEqual(args1, args3), false);
-      } else {
-        skipTest(2);
+      }
+      else {
+        skipTest();
       }
     });
 
@@ -5029,7 +5073,7 @@
   QUnit.module('lodash.memoize');
 
   (function() {
-    test('should memoize results based on the first argument passed', 2, function() {
+    test('should memoize results based on the first argument provided', 2, function() {
       var memoized = _.memoize(function(a, b, c) {
         return a + b + c;
       });
@@ -5403,7 +5447,7 @@
       });
     });
 
-    test('should not error when passed non-object `options` values', 2, function() {
+    test('should not error for non-object `options` values', 2, function() {
       var pass = true;
 
       try {
@@ -6906,6 +6950,7 @@
       var props = [
         'argsClass',
         'argsObject',
+        'dom',
         'enumErrorProps',
         'enumPrototypes',
         'fastBind',
@@ -7268,7 +7313,7 @@
       equal(compiled(), '<<\n a \n>>');
     });
 
-    test('should not error when passed non-object `data` and `options` values', 2, function() {
+    test('should not error for non-object `data` and `options` values', 2, function() {
       var pass = true;
 
       try {
@@ -7556,7 +7601,7 @@
   _.forEach(['debounce', 'throttle'], function(methodName) {
     var func = _[methodName];
 
-    test('_.' + methodName + ' should not error when passed non-object `options` values', 1, function() {
+    test('_.' + methodName + ' should not error for non-object `options` values', 1, function() {
       var pass = true;
 
       try {
@@ -7782,6 +7827,14 @@
 
     test('should unescape the proper entities', 1, function() {
       equal(_.unescape(escaped), unescaped);
+    });
+
+    test('should not unescape the "&#x2F;" entity', 1, function() {
+      equal(_.unescape('&#x2F;'), '&#x2F;');
+    });
+
+    test('should handle strings with nothing to unescape', 1, function() {
+      equal(_.unescape('abc'), 'abc');
     });
 
     test('should unescape the same characters escaped by `_.escape`', 1, function() {
@@ -8092,9 +8145,17 @@
       deepEqual(actual, [1, 4, 5]);
     });
 
-    test('should return an array of unique values', 1, function() {
+    test('should return an array of unique values', 2, function() {
       var actual = _.xor([1, 1, 2, 5], [2, 2, 3, 5], [3, 4, 5, 5]);
       deepEqual(actual, [1, 4, 5]);
+
+      actual = _.xor([1, 1]);
+      deepEqual(actual, [1]);
+    });
+
+    test('should return a new array when a single array is provided', 1, function() {
+      var array = [1];
+      notStrictEqual(_.xor(array), array);
     });
 
     test('should return a wrapped value when chaining', 2, function() {
